@@ -58,7 +58,7 @@ The result: you get SketchyBar as your primary status bar, with seamless access 
 No permissions are required — not Input Monitoring, not Accessibility, and not Screen Recording. sketchybar-toggle uses `NSEvent.mouseLocation` polling for the cursor, and popup-menu detection reads only the window *level* from `CGWindowListCopyWindowInfo`, which macOS reports without any grant. See [Popup menu detection](#popup-menu-detection).
 
 ```bash
-curl -L https://github.com/MEGAToster/sketchybar-toggle/blob/main/install.sh | bash
+curl -L https://raw.githubusercontent.com/MEGAToster/sketchybar-toggle/refs/heads/main/install.sh| bash
 ```
 
 ### Build from source
