@@ -255,9 +255,68 @@ final class StateMachineTests: XCTestCase {
         XCTAssertEqual(sm.state, .hidden)
         mock.reset()
 
-        sm.handleMouseClick(distanceFromTop: 30) // click in menu bar zone but outside trigger
+        sm.handleMouseClick(distanceFromTop: 30) // below the native menu bar strip (24)
         XCTAssertEqual(sm.state, .visible)
         XCTAssertEqual(mock.showCallCount, 1)
+    }
+
+    func testClickOnNativeMenuBarDoesNotRestore() {
+        let mock = MockBarController()
+        let sm = BarStateMachine(
+            controller: mock,
+            triggerZone: 5,
+            menuBarHeight: 50,
+            nativeMenuBarHeight: 32
+        )
+
+        sm.handleMousePosition(distanceFromTop: 1) // hide
+        XCTAssertEqual(sm.state, .hidden)
+        mock.reset()
+
+        // Clicking a menu bar item: past the trigger zone, but inside the strip
+        // the native menu bar occupies. SketchyBar must stay out of the way.
+        sm.handleMouseClick(distanceFromTop: 12)
+        XCTAssertEqual(sm.state, .hidden)
+        XCTAssertEqual(mock.showCallCount, 0)
+    }
+
+    func testClickJustBelowNativeMenuBarRestores() {
+        let mock = MockBarController()
+        let sm = BarStateMachine(
+            controller: mock,
+            triggerZone: 5,
+            menuBarHeight: 50,
+            nativeMenuBarHeight: 32
+        )
+
+        sm.handleMousePosition(distanceFromTop: 1) // hide
+        mock.reset()
+
+        // A window title bar can be reached here, so the click-to-restore fix
+        // for window headers still applies.
+        sm.handleMouseClick(distanceFromTop: 32)
+        XCTAssertEqual(sm.state, .visible)
+        XCTAssertEqual(mock.showCallCount, 1)
+    }
+
+    func testClickWhileMenuOpenDoesNotRestore() {
+        let mock = MockBarController()
+        let sm = BarStateMachine(
+            controller: mock,
+            triggerZone: 5,
+            menuBarHeight: 50,
+            nativeMenuBarHeight: 32,
+            isMenuOpen: { true }
+        )
+
+        sm.handleMousePosition(distanceFromTop: 1) // hide
+        mock.reset()
+
+        // Clicking an item inside an open popup menu must not slide SketchyBar
+        // over it.
+        sm.handleMouseClick(distanceFromTop: 200)
+        XCTAssertEqual(sm.state, .hidden)
+        XCTAssertEqual(mock.showCallCount, 0)
     }
 
     func testClickInHiddenStateInsideTriggerZoneDoesNotRestore() {

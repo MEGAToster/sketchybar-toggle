@@ -6,7 +6,7 @@
 
 A lightweight macOS daemon that coordinates between [SketchyBar](https://github.com/FelixKratz/SketchyBar) and the native macOS menu bar.
 
-> **Note — forked & AI-written.** This repository is a fork of [malpern/sketchybar-toggle](https://github.com/malpern/sketchybar-toggle) that has been extended with **native popup-menu detection**: while you have an open macOS menu bar popup (e.g. a clicked menu bar item's dropdown), SketchyBar is kept hidden so it never slides up over the open menu. The code in this repo — including the base codebase and this modification — was **written by an AI assistant** with heavy human guidance, not purely hand-authored. Review before trusting in production.
+> **Note — forked & AI-written.** This repository is a fork of [malpern/sketchybar-toggle](https://github.com/malpern/sketchybar-toggle) that has been extended with **native popup-menu detection**: while you have an open macOS menu bar popup (e.g. a clicked menu bar item's dropdown), SketchyBar is kept hidden so it never slides up over the open menu. The code in this repo — including the base codebase and this modification — was **written by AI ** with human guidance, as I don't have experience with Swift. The feature was implemented to satisfy my own needs; use at your own risk.
 
 ## The Problem
 
@@ -54,18 +54,17 @@ The result: you get SketchyBar as your primary status bar, with seamless access 
 
 ## Install
 
-### Homebrew (recommended)
+
+No permissions are required — not Input Monitoring, not Accessibility, and not Screen Recording. sketchybar-toggle uses `NSEvent.mouseLocation` polling for the cursor, and popup-menu detection reads only the window *level* from `CGWindowListCopyWindowInfo`, which macOS reports without any grant. See [Popup menu detection](#popup-menu-detection).
 
 ```bash
-brew install malpern/tap/sketchybar-toggle
+curl -L https://github.com/MEGAToster/sketchybar-toggle/blob/main/install.sh | bash
 ```
-
-No Input Monitoring or Accessibility permissions are required — sketchybar-toggle uses `NSEvent.mouseLocation` polling. **One exception:** to detect open native popup menus (so SketchyBar stays hidden while a menu is open), the app needs **Screen Recording** permission. Without it, all other functionality works normally; only popup-menu detection is disabled. See [Popup menu detection](#popup-menu-detection).
 
 ### Build from source
 
 ```bash
-git clone https://github.com/malpern/sketchybar-toggle.git
+git clone https://github.com/MEGAToster/sketchybar-toggle.git
 cd sketchybar-toggle
 swift build -c release
 ```
@@ -73,10 +72,6 @@ swift build -c release
 Then copy the binary somewhere on your PATH:
 
 ```bash
-# Apple Silicon (default Homebrew prefix)
-cp .build/release/sketchybar-toggle /opt/homebrew/bin/
-
-# Or Intel Mac
 cp .build/release/sketchybar-toggle /usr/local/bin/
 ```
 
@@ -232,7 +227,7 @@ After changing "Automatically hide and show the menu bar" in System Settings, ru
 Run `sketchybar-toggle --setup` to check prerequisites. The most common cause is a missing `topmost = "window"` setting in SketchyBar. You can also run with `--debug` to see if mouse events are being detected and what coordinates are being reported.
 
 **SketchyBar reappears over an open menu bar popup**
-Screen Recording permission is not granted, so popup-menu detection is disabled. Grant it in System Settings > Privacy & Security > Screen Recording and restart sketchybar-toggle. Verify with `sketchybar-toggle --setup`.
+Make sure you are on a build that includes the click-handling fix — before it, the click that opened the menu itself restored SketchyBar. Run with `--debug` and check `/tmp/sketchybar-toggle-debug.log` for the `click detected` line and the `nativeMenuBar=` value logged at startup; if your menu bar is taller than that value, pass a larger `--menu-bar-height`.
 
 **SketchyBar stays hidden after sketchybar-toggle crashes or is force-killed**
 Run `sketchybar --bar hidden=off` to restore it manually. Under normal shutdown (Ctrl+C or SIGTERM), sketchybar-toggle restores SketchyBar automatically.
@@ -256,7 +251,11 @@ SKETCHYBAR_HIDDEN
 
 ### Popup menu detection
 
-While SketchyBar is hidden, sketchybar-toggle also checks whether a native popup menu is open (e.g. you clicked a menu bar item and its dropdown menu is on screen). While a popup is open, SketchyBar stays hidden — otherwise it would slide up over the open menu. The check runs at a throttled **10 Hz** (using `CGWindowListCopyWindowInfo` and looking for windows at the popup-menu level), keeping WindowServer traffic negligible. This check requires **Screen Recording** permission; without it, SketchyBar reappears over open popups.
+While SketchyBar is hidden, sketchybar-toggle also checks whether a native popup menu is open (e.g. you clicked a menu bar item and its dropdown menu is on screen). While a popup is open, SketchyBar stays hidden — otherwise it would slide up over the open menu. The check runs at a throttled **10 Hz** (using `CGWindowListCopyWindowInfo` and looking for windows at the popup-menu level), keeping WindowServer traffic negligible.
+
+This needs no permissions. macOS reports the window level of every on-screen window to any process; only `kCGWindowName` is withheld without a Screen Recording grant, and this check never reads the name.
+
+Clicks are handled the same way. A click while SketchyBar is hidden normally restores it immediately, so window title bars near the top of the screen stay grabbable. Two exceptions keep the native menu bar usable: clicks landing inside the real menu bar strip (its height is measured at startup — the notch safe area on displays that have one, otherwise the classic 24pt bar), and clicks made while a popup menu is open.
 
 SketchyBar Toggle controls SketchyBar via its CLI (`sketchybar --bar hidden=on/off`) and uses SketchyBar's built-in animation system for smooth slide-down transitions.
 
@@ -290,7 +289,7 @@ sketchybar-toggle/
 - [SketchyBar](https://github.com/FelixKratz/SketchyBar)
 - Swift 5.9+ (build only)
 - No runtime dependencies — uses only system frameworks (AppKit, CoreGraphics, Foundation)
-- No Input Monitoring or Accessibility permissions. Screen Recording permission is required for popup-menu detection (all other features work without it).
+- No permissions at all — no Input Monitoring, Accessibility, or Screen Recording.
 
 ## What's Next
 

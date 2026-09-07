@@ -46,10 +46,20 @@ let controller = SketchyBarController()
 // the state machine so both observe the same cached result.
 let nativeMenuDetector = NativeMenuDetector()
 
+// Height of the real macOS menu bar strip. On notched displays the menu bar
+// spans the safe area (taller than the classic 24pt bar), so take whichever is
+// larger. Clicks inside this strip belong to the menu bar, never to a window.
+let nativeMenuBarHeight: CGFloat = {
+    let statusBar = NSStatusBar.system.thickness
+    let safeArea = NSScreen.main?.safeAreaInsets.top ?? 0
+    return max(statusBar, safeArea, 24)
+}()
+
 let stateMachine = BarStateMachine(
     controller: controller,
     triggerZone: config.triggerZone,
     menuBarHeight: config.menuBarHeight,
+    nativeMenuBarHeight: nativeMenuBarHeight,
     debounceInterval: config.debounce,
     isMenuOpen: { nativeMenuDetector.isMenuOpen() }
 )
@@ -78,7 +88,7 @@ if config.debug || ProcessInfo.processInfo.environment["SKETCHYBAR_TOGGLE_DEBUG"
         let line = "\(ISO8601DateFormatter().string(from: Date())) \(msg)\n"
         debugLogFile?.write(line.data(using: .utf8) ?? Data())
     }
-    debugLog?("started with trigger=\(Int(config.triggerZone)) menuBar=\(Int(config.menuBarHeight)) debounce=\(Int(config.debounce * 1000))ms")
+    debugLog?("started with trigger=\(Int(config.triggerZone)) menuBar=\(Int(config.menuBarHeight)) nativeMenuBar=\(Int(nativeMenuBarHeight)) debounce=\(Int(config.debounce * 1000))ms")
 } else {
     debugLog = nil
 }
@@ -162,14 +172,6 @@ func runSetup() {
         print("  [!!] macOS menu bar auto-hide is not enabled")
         print("       Set it in System Settings > Control Center > Automatically hide and show the menu bar")
         print("       After changing, run: killall Dock")
-    }
-
-    // Screen Recording (for detecting native popup menus)
-    if report.screenRecordingGranted {
-        print("  [ok] Screen Recording permission granted (popup menu detection)")
-    } else {
-        print("  [!!] Screen Recording permission not granted — cannot detect open popup menus")
-        print("       Grant it in System Settings > Privacy & Security > Screen Recording, then restart sketchybar-toggle")
     }
 
     print("")

@@ -12,6 +12,11 @@ public final class BarStateMachine {
 
     public let triggerZone: CGFloat
     public let menuBarHeight: CGFloat
+    /// Height of the real macOS menu bar strip, in pixels from the top of the
+    /// screen. Clicks inside it belong to the native menu bar, not to any window
+    /// underneath. Distinct from `menuBarHeight`, which is the (deliberately
+    /// larger) hysteresis threshold for un-hiding.
+    public let nativeMenuBarHeight: CGFloat
     public let debounceInterval: TimeInterval
 
     private let controller: BarController
@@ -23,6 +28,7 @@ public final class BarStateMachine {
         controller: BarController,
         triggerZone: CGFloat = 10,
         menuBarHeight: CGFloat = 50,
+        nativeMenuBarHeight: CGFloat = 24,
         debounceInterval: TimeInterval = 0.15,
         timerQueue: DispatchQueue = .main,
         isMenuOpen: @escaping () -> Bool = { false }
@@ -30,6 +36,7 @@ public final class BarStateMachine {
         self.controller = controller
         self.triggerZone = triggerZone
         self.menuBarHeight = menuBarHeight
+        self.nativeMenuBarHeight = nativeMenuBarHeight
         self.debounceInterval = debounceInterval
         self.timerQueue = timerQueue
         self.isMenuOpen = isMenuOpen
@@ -58,8 +65,15 @@ public final class BarStateMachine {
     /// Process a mouse click while in the hidden state.
     /// If the click is outside the trigger zone, immediately restore SketchyBar
     /// so that window title bars near the top of the screen remain interactive.
+    ///
+    /// Two exceptions keep SketchyBar out of the way of the native menu bar:
+    /// a click inside the real menu bar strip is menu bar interaction (there is
+    /// no window title bar to reach there — the menu bar overlay is on top), and
+    /// a click while a popup menu is open would slide SketchyBar over that menu.
     public func handleMouseClick(distanceFromTop: CGFloat) {
         guard state == .hidden, distanceFromTop >= triggerZone else { return }
+        guard distanceFromTop >= nativeMenuBarHeight else { return }
+        guard !isMenuOpen() else { return }
         cancelDebounce()
         state = .visible
         controller.show()
