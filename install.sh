@@ -22,5 +22,5 @@ echo "Copying bin to /usr/local/bin/sketchybar-toggle (requires sudo)"
 
 sudo cp .build/release/sketchybar-toggle /usr/local/bin/ || exit 1
 
-echo 'Installation complete. Add the following to the bottom of your sketchybarrc:'
+echo 'Installation complete. Add the following to the bottom of your sketchybarrc and restart sketchybar:'
 echo 'pkill -x sketchybar-toggle && sketchybar-toggle &'
