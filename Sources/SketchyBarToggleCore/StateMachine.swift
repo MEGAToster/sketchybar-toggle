@@ -15,6 +15,7 @@ public final class BarStateMachine {
     public let debounceInterval: TimeInterval
 
     private let controller: BarController
+    private let isMenuOpen: () -> Bool
     private var debounceTimer: DispatchSourceTimer?
     private let timerQueue: DispatchQueue
 
@@ -23,13 +24,15 @@ public final class BarStateMachine {
         triggerZone: CGFloat = 10,
         menuBarHeight: CGFloat = 50,
         debounceInterval: TimeInterval = 0.15,
-        timerQueue: DispatchQueue = .main
+        timerQueue: DispatchQueue = .main,
+        isMenuOpen: @escaping () -> Bool = { false }
     ) {
         self.controller = controller
         self.triggerZone = triggerZone
         self.menuBarHeight = menuBarHeight
         self.debounceInterval = debounceInterval
         self.timerQueue = timerQueue
+        self.isMenuOpen = isMenuOpen
     }
 
     /// Process a mouse position update. `distanceFromTop` is the distance in pixels
@@ -44,7 +47,7 @@ public final class BarStateMachine {
             }
 
         case .hidden:
-            if distanceFromTop > menuBarHeight {
+            if distanceFromTop > menuBarHeight && !isMenuOpen() { 
                 startDebounce()
             } else {
                 cancelDebounce()

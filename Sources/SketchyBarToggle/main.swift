@@ -41,11 +41,17 @@ if config.setup {
 // MARK: - Setup
 
 let controller = SketchyBarController()
+
+// Detects open native popup menus (10 Hz throttled). Shared by the monitor and
+// the state machine so both observe the same cached result.
+let nativeMenuDetector = NativeMenuDetector()
+
 let stateMachine = BarStateMachine(
     controller: controller,
     triggerZone: config.triggerZone,
     menuBarHeight: config.menuBarHeight,
-    debounceInterval: config.debounce
+    debounceInterval: config.debounce,
+    isMenuOpen: { nativeMenuDetector.isMenuOpen() }
 )
 
 // Ensure SketchyBar is visible on startup (recover from previous crash)
@@ -156,6 +162,14 @@ func runSetup() {
         print("  [!!] macOS menu bar auto-hide is not enabled")
         print("       Set it in System Settings > Control Center > Automatically hide and show the menu bar")
         print("       After changing, run: killall Dock")
+    }
+
+    // Screen Recording (for detecting native popup menus)
+    if report.screenRecordingGranted {
+        print("  [ok] Screen Recording permission granted (popup menu detection)")
+    } else {
+        print("  [!!] Screen Recording permission not granted — cannot detect open popup menus")
+        print("       Grant it in System Settings > Privacy & Security > Screen Recording, then restart sketchybar-toggle")
     }
 
     print("")

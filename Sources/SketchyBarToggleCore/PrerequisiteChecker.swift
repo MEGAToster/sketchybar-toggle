@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 public struct PrerequisiteReport {
@@ -5,6 +6,7 @@ public struct PrerequisiteReport {
     public let topmostValue: String?
     public let topmostCorrect: Bool
     public let menuBarAutoHide: Bool
+    public let screenRecordingGranted: Bool
     public var issues: [String]
 
     public var allPassed: Bool { issues.isEmpty }
@@ -14,12 +16,14 @@ public struct PrerequisiteReport {
         topmostValue: String?,
         topmostCorrect: Bool,
         menuBarAutoHide: Bool,
+        screenRecordingGranted: Bool,
         issues: [String]
     ) {
         self.sketchyBarRunning = sketchyBarRunning
         self.topmostValue = topmostValue
         self.topmostCorrect = topmostCorrect
         self.menuBarAutoHide = menuBarAutoHide
+        self.screenRecordingGranted = screenRecordingGranted
         self.issues = issues
     }
 }
@@ -63,11 +67,18 @@ public final class PrerequisiteChecker {
             issues.append("macOS menu bar auto-hide is not enabled (System Settings > Control Center > Automatically hide and show the menu bar)")
         }
 
+        // Check Screen Recording permission (required to detect native popup menus)
+        let screenRecording = checkScreenRecording()
+        if !screenRecording {
+            issues.append("Screen Recording permission is not granted — sketchybar-toggle cannot detect open popup menus (System Settings > Privacy & Security > Screen Recording)")
+        }
+
         return PrerequisiteReport(
             sketchyBarRunning: running,
             topmostValue: topmostVal,
             topmostCorrect: topmostCorrect,
             menuBarAutoHide: autoHide,
+            screenRecordingGranted: screenRecording,
             issues: issues
         )
     }
@@ -144,5 +155,9 @@ public final class PrerequisiteChecker {
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         let output = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         return output == "1"
+    }
+
+    private func checkScreenRecording() -> Bool {
+        CGPreflightScreenCaptureAccess()
     }
 }

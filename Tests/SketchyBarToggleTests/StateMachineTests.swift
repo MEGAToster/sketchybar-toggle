@@ -325,4 +325,100 @@ final class StateMachineTests: XCTestCase {
         XCTAssertEqual(sm.state, .hidden)
         XCTAssertFalse(sm.hasPendingDebounce)
     }
+
+    // MARK: - Popup menu gating (isMenuOpen)
+
+    func testMenuOpenWhileHiddenSuppressesShow() {
+        let mock = MockBarController()
+        let menuOpen = true
+        let sm = BarStateMachine(
+            controller: mock,
+            triggerZone: 2,
+            menuBarHeight: 40,
+            debounceInterval: 0.05,
+            isMenuOpen: { menuOpen }
+        )
+
+        sm.handleMousePosition(distanceFromTop: 1) // hide
+        sm.handleMousePosition(distanceFromTop: 50) // leave menu bar zone, but menu is open
+
+        XCTAssertEqual(sm.state, .hidden)
+        XCTAssertFalse(sm.hasPendingDebounce)
+        XCTAssertEqual(mock.showCallCount, 0)
+
+        // Give any stray debounce a chance to fire
+        let expectation = XCTestExpectation(description: "No show while menu open")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            XCTAssertEqual(sm.state, .hidden)
+            XCTAssertEqual(mock.showCallCount, 0)
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+    }
+
+    func testMenuClosingResumesShow() {
+        let mock = MockBarController()
+        var menuOpen = true
+        let sm = BarStateMachine(
+            controller: mock,
+            triggerZone: 2,
+            menuBarHeight: 40,
+            debounceInterval: 0.05,
+            isMenuOpen: { menuOpen }
+        )
+
+        sm.handleMousePosition(distanceFromTop: 1) // hide
+        sm.handleMousePosition(distanceFromTop: 50) // leave zone, menu open → suppressed
+
+        menuOpen = false
+        sm.handleMousePosition(distanceFromTop: 60) // next tick: menu closed → start debounce
+
+        XCTAssertEqual(sm.state, .hidden)
+        XCTAssertTrue(sm.hasPendingDebounce)
+
+        let expectation = XCTestExpectation(description: "Show after menu closes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            XCTAssertEqual(sm.state, .visible)
+            XCTAssertEqual(mock.showCallCount, 1)
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+    }
+
+    func testMenuOpenCancelsPendingDebounce() {
+        let mock = MockBarController()
+        var menuOpen = false
+        let sm = BarStateMachine(
+            controller: mock,
+            triggerZone: 2,
+            menuBarHeight: 40,
+            debounceInterval: 0.1,
+            isMenuOpen: { menuOpen }
+        )
+
+        sm.handleMousePosition(distanceFromTop: 1) // hide
+        sm.handleMousePosition(distanceFromTop: 50) // leave zone → debounce starts
+        XCTAssertTrue(sm.hasPendingDebounce)
+
+        menuOpen = true
+        sm.handleMousePosition(distanceFromTop: 60) // menu opens → debounce cancelled
+        XCTAssertFalse(sm.hasPendingDebounce)
+        XCTAssertEqual(sm.state, .hidden)
+    }
+
+    func testDefaultIsMenuOpenAllowsShow() {
+        let mock = MockBarController()
+        let sm = BarStateMachine(
+            controller: mock,
+            triggerZone: 2,
+            menuBarHeight: 40,
+            debounceInterval: 0.05
+        )
+
+        sm.handleMousePosition(distanceFromTop: 1) // hide
+        sm.handleMousePosition(distanceFromTop: 50) // leave zone, default isMenuOpen = false
+
+        XCTAssertEqual(sm.state, .hidden)
+        XCTAssertTrue(sm.hasPendingDebounce)
+    }
 }

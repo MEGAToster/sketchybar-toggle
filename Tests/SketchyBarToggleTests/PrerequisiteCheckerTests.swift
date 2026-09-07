@@ -56,6 +56,7 @@ final class PrerequisiteCheckerTests: XCTestCase {
             topmostValue: "window",
             topmostCorrect: true,
             menuBarAutoHide: true,
+            screenRecordingGranted: true,
             issues: []
         )
         XCTAssertTrue(report.allPassed)
@@ -67,6 +68,7 @@ final class PrerequisiteCheckerTests: XCTestCase {
             topmostValue: nil,
             topmostCorrect: false,
             menuBarAutoHide: true,
+            screenRecordingGranted: true,
             issues: ["SketchyBar does not appear to be running"]
         )
         XCTAssertFalse(report.allPassed)
@@ -78,6 +80,7 @@ final class PrerequisiteCheckerTests: XCTestCase {
             topmostValue: nil,
             topmostCorrect: false,
             menuBarAutoHide: false,
+            screenRecordingGranted: false,
             issues: [
                 "SketchyBar does not appear to be running",
                 "macOS menu bar auto-hide is not enabled"

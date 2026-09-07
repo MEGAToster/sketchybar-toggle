@@ -6,6 +6,8 @@
 
 A lightweight macOS daemon that coordinates between [SketchyBar](https://github.com/FelixKratz/SketchyBar) and the native macOS menu bar.
 
+> **Note — forked & AI-written.** This repository is a fork of [malpern/sketchybar-toggle](https://github.com/malpern/sketchybar-toggle) that has been extended with **native popup-menu detection**: while you have an open macOS menu bar popup (e.g. a clicked menu bar item's dropdown), SketchyBar is kept hidden so it never slides up over the open menu. The code in this repo — including the base codebase and this modification — was **written by an AI assistant** with heavy human guidance, not purely hand-authored. Review before trusting in production.
+
 ## The Problem
 
 If you use SketchyBar with the native macOS menu bar set to "auto-hide," both bars fight for the same space at the top of the screen. When you move your mouse up to reveal the native menu bar, it slides down *over* SketchyBar, creating an ugly overlap. There's no built-in way to coordinate them.
@@ -58,7 +60,7 @@ The result: you get SketchyBar as your primary status bar, with seamless access 
 brew install malpern/tap/sketchybar-toggle
 ```
 
-No special permissions are required — sketchybar-toggle uses `NSEvent.mouseLocation` polling which works without Input Monitoring or Accessibility permission.
+No Input Monitoring or Accessibility permissions are required — sketchybar-toggle uses `NSEvent.mouseLocation` polling. **One exception:** to detect open native popup menus (so SketchyBar stays hidden while a menu is open), the app needs **Screen Recording** permission. Without it, all other functionality works normally; only popup-menu detection is disabled. See [Popup menu detection](#popup-menu-detection).
 
 ### Build from source
 
@@ -229,12 +231,15 @@ After changing "Automatically hide and show the menu bar" in System Settings, ru
 **sketchybar-toggle is running but nothing happens**
 Run `sketchybar-toggle --setup` to check prerequisites. The most common cause is a missing `topmost = "window"` setting in SketchyBar. You can also run with `--debug` to see if mouse events are being detected and what coordinates are being reported.
 
+**SketchyBar reappears over an open menu bar popup**
+Screen Recording permission is not granted, so popup-menu detection is disabled. Grant it in System Settings > Privacy & Security > Screen Recording and restart sketchybar-toggle. Verify with `sketchybar-toggle --setup`.
+
 **SketchyBar stays hidden after sketchybar-toggle crashes or is force-killed**
 Run `sketchybar --bar hidden=off` to restore it manually. Under normal shutdown (Ctrl+C or SIGTERM), sketchybar-toggle restores SketchyBar automatically.
 
 ## How It Works
 
-SketchyBar Toggle polls `NSEvent.mouseLocation` at ~60Hz to track the mouse cursor's distance from the top of the current screen. This approach requires no special macOS permissions (no Input Monitoring, no Accessibility) and works reliably across `brew upgrade` cycles.
+SketchyBar Toggle polls `NSEvent.mouseLocation` at ~60Hz to track the mouse cursor's distance from the top of the current screen. This requires no Input Monitoring or Accessibility permission and works reliably across `brew upgrade` cycles.
 
 The core logic is a simple state machine:
 
@@ -244,10 +249,14 @@ SKETCHYBAR_VISIBLE (default)
   → hide SketchyBar instantly
 
 SKETCHYBAR_HIDDEN
-  → mouse leaves menu bar zone (below 50px)
+  → mouse leaves menu bar zone (below 50px) AND no popup menu is open
   → wait for debounce (150ms)
   → slide SketchyBar back into view
 ```
+
+### Popup menu detection
+
+While SketchyBar is hidden, sketchybar-toggle also checks whether a native popup menu is open (e.g. you clicked a menu bar item and its dropdown menu is on screen). While a popup is open, SketchyBar stays hidden — otherwise it would slide up over the open menu. The check runs at a throttled **10 Hz** (using `CGWindowListCopyWindowInfo` and looking for windows at the popup-menu level), keeping WindowServer traffic negligible. This check requires **Screen Recording** permission; without it, SketchyBar reappears over open popups.
 
 SketchyBar Toggle controls SketchyBar via its CLI (`sketchybar --bar hidden=on/off`) and uses SketchyBar's built-in animation system for smooth slide-down transitions.
 
@@ -263,6 +272,7 @@ sketchybar-toggle/
 │   │   ├── BarController.swift            # Protocol for bar control (enables mocking)
 │   │   ├── StateMachine.swift             # State machine: visible ↔ hidden with debounce
 │   │   ├── EventTap.swift                 # Mouse position polling + screen geometry
+│   │   ├── NativeMenuDetector.swift      # Detects open popup menus (10 Hz throttled)
 │   │   ├── SketchyBarController.swift     # Shells out to sketchybar CLI
 │   │   ├── PrerequisiteChecker.swift      # Verifies topmost, menu bar auto-hide
 │   │   └── Config.swift                   # CLI argument parsing
@@ -279,8 +289,8 @@ sketchybar-toggle/
 - macOS 13+ (Ventura)
 - [SketchyBar](https://github.com/FelixKratz/SketchyBar)
 - Swift 5.9+ (build only)
-- No runtime dependencies — uses only system frameworks (AppKit, Foundation)
-- No special permissions required
+- No runtime dependencies — uses only system frameworks (AppKit, CoreGraphics, Foundation)
+- No Input Monitoring or Accessibility permissions. Screen Recording permission is required for popup-menu detection (all other features work without it).
 
 ## What's Next
 
