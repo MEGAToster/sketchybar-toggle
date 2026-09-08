@@ -480,4 +480,143 @@ final class StateMachineTests: XCTestCase {
         XCTAssertEqual(sm.state, .hidden)
         XCTAssertTrue(sm.hasPendingDebounce)
     }
+
+    // MARK: - Stale menu timeout (self-heal)
+
+    func testDefaultStaleMenuTimeoutIsFifteenSeconds() {
+        let mock = MockBarController()
+        let sm = BarStateMachine(controller: mock)
+        XCTAssertEqual(sm.staleMenuTimeout, 15)
+    }
+
+    func testMenuOpenSuppressesShowUntilStaleTimeout() {
+        let mock = MockBarController()
+        var menuOpen = true
+        let sm = BarStateMachine(
+            controller: mock,
+            triggerZone: 2,
+            menuBarHeight: 40,
+            debounceInterval: 0.05,
+            staleMenuTimeout: 5,
+            isMenuOpen: { menuOpen }
+        )
+
+        sm.handleMousePosition(distanceFromTop: 1, now: 0) // hide
+        XCTAssertEqual(sm.state, .hidden)
+
+        // Below the menu-bar zone with a menu open: show suppressed.
+        sm.handleMousePosition(distanceFromTop: 60, now: 0)
+        XCTAssertFalse(sm.hasPendingDebounce)
+
+        // Still within the timeout window: keep suppressing.
+        sm.handleMousePosition(distanceFromTop: 60, now: 4)
+        XCTAssertFalse(sm.hasPendingDebounce)
+        XCTAssertEqual(mock.showCallCount, 0)
+
+        // Menu has been continuously "open" past the timeout: treat as stale,
+        // allow the debounce/show to proceed.
+        sm.handleMousePosition(distanceFromTop: 60, now: 5)
+        XCTAssertTrue(sm.hasPendingDebounce)
+
+        let expectation = XCTestExpectation(description: "Show after stale menu")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            XCTAssertEqual(sm.state, .visible)
+            XCTAssertEqual(mock.showCallCount, 1)
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+    }
+
+    func testMenuClosingResetsStaleClockAndShows() {
+        let mock = MockBarController()
+        var menuOpen = true
+        let sm = BarStateMachine(
+            controller: mock,
+            triggerZone: 2,
+            menuBarHeight: 40,
+            debounceInterval: 0.05,
+            staleMenuTimeout: 5,
+            isMenuOpen: { menuOpen }
+        )
+
+        sm.handleMousePosition(distanceFromTop: 1, now: 0) // hide
+        sm.handleMousePosition(distanceFromTop: 60, now: 0) // menu open, suppressed
+        XCTAssertFalse(sm.hasPendingDebounce)
+
+        menuOpen = false
+        sm.handleMousePosition(distanceFromTop: 60, now: 100) // menu closed -> show normally
+        XCTAssertTrue(sm.hasPendingDebounce)
+
+        let expectation = XCTestExpectation(description: "Show after menu closes")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            XCTAssertEqual(sm.state, .visible)
+            XCTAssertEqual(mock.showCallCount, 1)
+            expectation.fulfill()
+        }
+        wait(for: [expectation], timeout: 1.0)
+    }
+
+    func testStaleClockRestartsWhenMenuReopens() {
+        let mock = MockBarController()
+        var menuOpen = true
+        let sm = BarStateMachine(
+            controller: mock,
+            triggerZone: 2,
+            menuBarHeight: 40,
+            debounceInterval: 0.5,
+            staleMenuTimeout: 5,
+            isMenuOpen: { menuOpen }
+        )
+
+        sm.handleMousePosition(distanceFromTop: 1, now: 0) // hide
+
+        // Menu open from t=0..2, then closes.
+        sm.handleMousePosition(distanceFromTop: 60, now: 0)
+        XCTAssertFalse(sm.hasPendingDebounce)
+        menuOpen = false
+        sm.handleMousePosition(distanceFromTop: 60, now: 2)
+        XCTAssertTrue(sm.hasPendingDebounce) // normal show path started
+
+        // Menu reopens at t=3 — cancels debounce and restarts the stale clock,
+        // so it must not be treated as stale until 3 + 5 = 8.
+        menuOpen = true
+        sm.handleMousePosition(distanceFromTop: 60, now: 3)
+        XCTAssertFalse(sm.hasPendingDebounce)
+
+        sm.handleMousePosition(distanceFromTop: 60, now: 7)
+        XCTAssertFalse(sm.hasPendingDebounce) // 4s since reopen — still suppressed
+
+        sm.handleMousePosition(distanceFromTop: 60, now: 8)
+        XCTAssertTrue(sm.hasPendingDebounce) // 5s since reopen — stale, show
+    }
+
+    func testStaleTimeoutDoesNotFireWhileCursorInMenuBarZone() {
+        let mock = MockBarController()
+        var menuOpen = true
+        let sm = BarStateMachine(
+            controller: mock,
+            triggerZone: 2,
+            menuBarHeight: 40,
+            debounceInterval: 0.05,
+            staleMenuTimeout: 5,
+            isMenuOpen: { menuOpen }
+        )
+
+        sm.handleMousePosition(distanceFromTop: 1, now: 0) // hide
+        XCTAssertEqual(sm.state, .hidden)
+
+        // Lingering inside the menu-bar zone must never start a debounce, no
+        // matter how long the menu stays open there.
+        sm.handleMousePosition(distanceFromTop: 20, now: 0)
+        sm.handleMousePosition(distanceFromTop: 20, now: 1000)
+        XCTAssertFalse(sm.hasPendingDebounce)
+        XCTAssertEqual(mock.showCallCount, 0)
+
+        // Leaving the zone restarts the clock fresh (not stale from t=1000).
+        sm.handleMousePosition(distanceFromTop: 60, now: 1001)
+        XCTAssertFalse(sm.hasPendingDebounce)
+
+        sm.handleMousePosition(distanceFromTop: 60, now: 1006)
+        XCTAssertTrue(sm.hasPendingDebounce)
+    }
 }

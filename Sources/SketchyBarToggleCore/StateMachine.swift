@@ -18,11 +18,18 @@ public final class BarStateMachine {
     /// larger) hysteresis threshold for un-hiding.
     public let nativeMenuBarHeight: CGFloat
     public let debounceInterval: TimeInterval
+    /// How long an open popup menu may persist (with the cursor below the
+    /// menu-bar zone) before it is treated as stale — e.g. a ghost/lingering
+    /// window — and SketchyBar is shown anyway. Guards against the bar getting
+    /// permanently stuck hidden. Defaults to 15 seconds.
+    public let staleMenuTimeout: TimeInterval
 
     private let controller: BarController
     private let isMenuOpen: () -> Bool
     private var debounceTimer: DispatchSourceTimer?
     private let timerQueue: DispatchQueue
+    /// When the currently-open menu was first observed (nil if none open).
+    private var menuOpenSince: TimeInterval?
 
     public init(
         controller: BarController,
@@ -30,6 +37,7 @@ public final class BarStateMachine {
         menuBarHeight: CGFloat = 50,
         nativeMenuBarHeight: CGFloat = 24,
         debounceInterval: TimeInterval = 0.15,
+        staleMenuTimeout: TimeInterval = 15,
         timerQueue: DispatchQueue = .main,
         isMenuOpen: @escaping () -> Bool = { false }
     ) {
@@ -38,26 +46,52 @@ public final class BarStateMachine {
         self.menuBarHeight = menuBarHeight
         self.nativeMenuBarHeight = nativeMenuBarHeight
         self.debounceInterval = debounceInterval
+        self.staleMenuTimeout = staleMenuTimeout
         self.timerQueue = timerQueue
         self.isMenuOpen = isMenuOpen
     }
 
     /// Process a mouse position update. `distanceFromTop` is the distance in pixels
-    /// from the mouse cursor to the top edge of the current screen.
-    public func handleMousePosition(distanceFromTop: CGFloat) {
+    /// from the mouse cursor to the top edge of the current screen. `now` is the
+    /// current time (seconds since reference date); injectable for tests.
+    public func handleMousePosition(
+        distanceFromTop: CGFloat,
+        now: TimeInterval = Date().timeIntervalSinceReferenceDate
+    ) {
         switch state {
         case .visible:
             if distanceFromTop < triggerZone {
                 state = .hidden
+                menuOpenSince = nil
                 cancelDebounce()
                 controller.hide()
             }
 
         case .hidden:
-            if distanceFromTop > menuBarHeight && !isMenuOpen() { 
-                startDebounce()
-            } else {
+            // Still inside the menu-bar zone: the native menu bar may be in use,
+            // so never start (or keep) a debounce here.
+            guard distanceFromTop > menuBarHeight else {
+                menuOpenSince = nil
                 cancelDebounce()
+                return
+            }
+
+            if isMenuOpen() {
+                // A menu (or something that looks like one) is up. Record when it
+                // was first seen so we can detect a stale/ghost window below.
+                if menuOpenSince == nil { menuOpenSince = now }
+                if let since = menuOpenSince, now - since >= staleMenuTimeout {
+                    // The "menu" has outlived any realistic interaction while the
+                    // cursor is well below the menu bar — treat it as stale and
+                    // let SketchyBar come back rather than staying hidden forever.
+                    menuOpenSince = nil
+                    startDebounce()
+                } else {
+                    cancelDebounce()
+                }
+            } else {
+                menuOpenSince = nil
+                startDebounce()
             }
         }
     }
@@ -75,6 +109,7 @@ public final class BarStateMachine {
         guard distanceFromTop >= nativeMenuBarHeight else { return }
         guard !isMenuOpen() else { return }
         cancelDebounce()
+        menuOpenSince = nil
         state = .visible
         controller.show()
     }
@@ -82,6 +117,7 @@ public final class BarStateMachine {
     /// Force a transition to visible. Used on startup/shutdown to restore SketchyBar.
     public func forceVisible() {
         cancelDebounce()
+        menuOpenSince = nil
         state = .visible
         controller.show()
     }

@@ -181,7 +181,7 @@ Logs are written to `/tmp/sketchybar-toggle.log`.
 sketchybar-toggle
 
 # Custom thresholds
-sketchybar-toggle --trigger-zone 10 --menu-bar-height 50 --debounce 150
+sketchybar-toggle --trigger-zone 10 --menu-bar-height 50 --debounce 150 --stale-menu-timeout 15000
 
 # Show auto-start setup instructions
 sketchybar-toggle --setup
@@ -200,6 +200,7 @@ sketchybar-toggle --version
 | `--trigger-zone <px>` | 10 | Distance from top of screen (in pixels) that triggers SketchyBar to hide |
 | `--menu-bar-height <px>` | 50 | Distance from top defining the menu bar zone — SketchyBar won't reappear until the mouse is below this |
 | `--debounce <ms>` | 150 | Delay in milliseconds before SketchyBar reappears, prevents flicker on rapid mouse movement |
+| `--stale-menu-timeout <ms>` | 15000 | Milliseconds an open popup menu may persist (with the cursor below the menu-bar zone) before it's treated as stale and SketchyBar is shown anyway. Prevents SketchyBar from getting permanently stuck hidden. |
 | `--setup` | | Check prerequisites and show auto-start instructions |
 | `--debug` | | Log mouse position and state changes to `/tmp/sketchybar-toggle-debug.log` |
 | `--version` | | Print version |
@@ -214,6 +215,7 @@ You can also enable debug logging via the `SKETCHYBAR_TOGGLE_DEBUG=1` environmen
 - **SketchyBar reappears while the menu bar is still visible**: increase `--menu-bar-height` (e.g., `--menu-bar-height 60`)
 - **Transitions feel slow**: decrease `--debounce` (e.g., `--debounce 100`)
 - **Flickering on rapid mouse movement**: increase `--debounce`
+- **SketchyBar stays hidden after interacting with a popup**: increase `--stale-menu-timeout` if a lingering popup/ghost window keeps it hidden too long, or decrease it if you want it to recover faster
 
 ## Troubleshooting
 
@@ -244,16 +246,24 @@ SKETCHYBAR_VISIBLE (default)
   → hide SketchyBar instantly
 
 SKETCHYBAR_HIDDEN
-  → mouse leaves menu bar zone (below 50px) AND no popup menu is open
+  → mouse leaves menu bar zone (below 50px) AND no (non-SketchyBar) popup menu is open
   → wait for debounce (150ms)
   → slide SketchyBar back into view
+
+  A popup menu that stays open past --stale-menu-timeout while the cursor is
+  below the menu bar zone is treated as stale, and SketchyBar slides back up.
 ```
 
 ### Popup menu detection
 
 While SketchyBar is hidden, sketchybar-toggle also checks whether a native popup menu is open (e.g. you clicked a menu bar item and its dropdown menu is on screen). While a popup is open, SketchyBar stays hidden — otherwise it would slide up over the open menu. The check runs at a throttled **10 Hz** (using `CGWindowListCopyWindowInfo` and looking for windows at the popup-menu level), keeping WindowServer traffic negligible.
 
-This needs no permissions. macOS reports the window level of every on-screen window to any process; only `kCGWindowName` is withheld without a Screen Recording grant, and this check never reads the name.
+Two safeguards keep this from hiding SketchyBar permanently:
+
+1. **SketchyBar's own popup windows are ignored.** SketchyBar renders bar-item popups as real windows at the *same* popup-menu window level as native menus, and those windows are not closed when the bar is hidden. If they counted as "open menus," opening a SketchyBar popup and then moving the mouse to the top (which hides the bar) would prevent SketchyBar from ever reappearing. The detector therefore only counts popup-level windows **not** owned by the `sketchybar` process. Native menu-bar menus belong to their host app and are still detected.
+2. **Stale-menu self-heal.** If a "menu" stays open for longer than `--stale-menu-timeout` (default **15 s**) while the cursor is below the menu-bar zone, it is treated as a stale/ghost window and SketchyBar is shown anyway. This guarantees the bar can always come back, even for a lingering window that isn't a real menu.
+
+This needs no permissions. macOS reports the window level and owner of every on-screen window to any process; only `kCGWindowName` is withheld without a Screen Recording grant, and this check never reads the name.
 
 Clicks are handled the same way. A click while SketchyBar is hidden normally restores it immediately, so window title bars near the top of the screen stay grabbable. Two exceptions keep the native menu bar usable: clicks landing inside the real menu bar strip (its height is measured at startup — the notch safe area on displays that have one, otherwise the classic 24pt bar), and clicks made while a popup menu is open.
 

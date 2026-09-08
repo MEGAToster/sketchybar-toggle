@@ -8,6 +8,7 @@ final class ConfigTests: XCTestCase {
         XCTAssertEqual(config.triggerZone, 10)
         XCTAssertEqual(config.menuBarHeight, 50)
         XCTAssertEqual(config.debounce, 0.15)
+        XCTAssertEqual(config.staleMenuTimeout, 15)
         XCTAssertFalse(config.checkPermissions)
         XCTAssertFalse(config.setup)
         XCTAssertFalse(config.showVersion)
@@ -27,6 +28,11 @@ final class ConfigTests: XCTestCase {
     func testDebounceConvertsMillisecondsToSeconds() throws {
         let config = try parseArguments(["--debounce", "300"])
         XCTAssertEqual(config.debounce, 0.3)
+    }
+
+    func testStaleMenuTimeoutConvertsMillisecondsToSeconds() throws {
+        let config = try parseArguments(["--stale-menu-timeout", "5000"])
+        XCTAssertEqual(config.staleMenuTimeout, 5)
     }
 
     func testCheckPermissions() throws {

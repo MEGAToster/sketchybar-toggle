@@ -31,9 +31,36 @@ public final class NativeMenuDetector {
         return cachedOpen
     }
 
-    /// Runs the actual WindowServer query for any window at the popup-menu level.
-    /// Fails safe (returns `false`) on any cast/deserialization failure so a bad
-    /// window entry never keeps SketchyBar hidden.
+    /// Process owner names whose popup-level windows must never count as an open
+    /// native menu. SketchyBar renders its own bar-item popups as real windows at
+    /// the popup-menu window level, so without this exception an open SketchyBar
+    /// popup would keep the bar hidden forever. Matching is case-insensitive.
+    public static let sketchybarOwnerNames: Set<String> = ["sketchybar"]
+
+    /// Pure classification of a single `CGWindowListCopyWindowInfo` entry.
+    /// Returns `true` only for a window at the popup-menu window level that is
+    /// *not* owned by SketchyBar itself — i.e. a genuine native macOS popup menu.
+    /// Exposed separately from the WindowServer query so it can be unit tested.
+    static func isNativeMenuWindow(
+        _ dict: [String: Any],
+        popUpMenuLevel: Int32,
+        sketchybarOwnerNames: Set<String> = NativeMenuDetector.sketchybarOwnerNames
+    ) -> Bool {
+        guard let layer = dict[kCGWindowLayer as String] as? NSNumber,
+              layer.int32Value == popUpMenuLevel else {
+            return false
+        }
+        guard let owner = dict[kCGWindowOwnerName as String] as? String else {
+            // No owner reported — can't rule SketchyBar out, so treat it as a menu.
+            return true
+        }
+        return !sketchybarOwnerNames.contains(owner.lowercased())
+    }
+
+    /// Runs the actual WindowServer query for any window at the popup-menu level
+    /// that is not owned by SketchyBar. Fails safe (returns `false`) on any
+    /// cast/deserialization failure so a bad window entry never keeps SketchyBar
+    /// hidden.
     private func queryMenuOpen() -> Bool {
         guard let windows = CGWindowListCopyWindowInfo(
             [.optionOnScreenOnly, .excludeDesktopElements],
@@ -43,10 +70,7 @@ public final class NativeMenuDetector {
         }
         let popUpMenuLevel = CGWindowLevelForKey(.popUpMenuWindow)
         return windows.contains { dict in
-            guard let layer = dict[kCGWindowLayer as String] as? NSNumber else {
-                return false
-            }
-            return layer.int32Value == popUpMenuLevel
+            NativeMenuDetector.isNativeMenuWindow(dict, popUpMenuLevel: popUpMenuLevel)
         }
     }
 }

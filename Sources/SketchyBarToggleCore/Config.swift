@@ -4,6 +4,10 @@ public struct Config: Equatable {
     public var triggerZone: CGFloat = 10
     public var menuBarHeight: CGFloat = 50
     public var debounce: TimeInterval = 0.15
+    /// How long an open popup menu may persist (with the cursor below the
+    /// menu-bar zone) before it is treated as stale and SketchyBar is shown
+    /// anyway. Stored in seconds; parsed from `--stale-menu-timeout` in ms.
+    public var staleMenuTimeout: TimeInterval = 15
     public var checkPermissions = false
     public var setup = false
     public var showVersion = false
@@ -38,6 +42,11 @@ public func parseArguments(_ args: [String]) throws -> Config {
             i += 1
             if i < args.count, let val = Double(args[i]) {
                 config.debounce = val / 1000.0
+            }
+        case "--stale-menu-timeout":
+            i += 1
+            if i < args.count, let val = Double(args[i]) {
+                config.staleMenuTimeout = val / 1000.0
             }
         case "--check-permissions":
             config.checkPermissions = true
